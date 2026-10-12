@@ -3,7 +3,7 @@ Jednorazowe pobranie danych historycznych do treningu modelu.
 
 1) IMGW – dobowe stany wody, przepływy i temperatura wody (archiwum od 1951 r.)
    dla Krakowa-Bielan i stacji w zlewni powyżej Krakowa.
-2) Open-Meteo (reanaliza ERA5) – godzinowy opad, deszcz, śnieg, temperatura,
+2) Open-Meteo (reanaliza ERA5 + ERA5-Land) – godzinowy opad, deszcz, śnieg, grubość pokrywy śnieżnej, temperatura,
    wilgotność gleby dla punktów w zlewni (od 1980 r.).
 
 Wynik (razem ok. 20–60 MB, format Parquet):
@@ -62,6 +62,7 @@ METEO_POINTS = {
     "katowice": (50.26, 19.02),           # Przemsza
 }
 METEO_VARS = "precipitation,rain,snowfall,temperature_2m,soil_moisture_0_to_7cm"
+SNOW_VARS = "snow_depth"  # grubość pokrywy śnieżnej [m], z ERA5-Land – ważna dla wezbrań roztopowych
 METEO_START_YEAR = 1980
 
 session = requests.Session()
@@ -169,23 +170,32 @@ def fetch_imgw_daily():
 
 # ---------------------------------------------------------------- Open-Meteo godzinowe
 
+def fetch_meteo_year(name, lat, lon, year, hourly, model, tag):
+    """Jeden rok danych godzinowych dla punktu; wynik w cache, więc nie pobieramy drugi raz."""
+    part = CACHE / f"{tag}_{name}_{year}.parquet"
+    if not part.exists():
+        last_year = pd.Timestamp.now(tz="UTC").year
+        end = f"{year}-12-31" if year < last_year else \
+            (pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=6)).strftime("%Y-%m-%d")
+        print(f"  Open-Meteo {tag} {name} {year}")
+        d = http_get("https://archive-api.open-meteo.com/v1/archive", params=dict(
+            latitude=lat, longitude=lon, start_date=f"{year}-01-01", end_date=end,
+            hourly=hourly, models=model, timezone="UTC",
+        )).json()
+        pd.DataFrame(d["hourly"]).to_parquet(part, index=False)
+        time.sleep(3)  # darmowy limit Open-Meteo: ok. 600 zapytań/min, 5000/h (ważonych)
+    return pd.read_parquet(part)
+
+
 def fetch_meteo_hourly():
     last_year = pd.Timestamp.now(tz="UTC").year
     for name, (lat, lon) in METEO_POINTS.items():
         frames = []
         for year in range(METEO_START_YEAR, last_year + 1):
-            part = CACHE / f"meteo_{name}_{year}.parquet"
-            if not part.exists():
-                end = f"{year}-12-31" if year < last_year else \
-                    (pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=6)).strftime("%Y-%m-%d")
-                print(f"  Open-Meteo {name} {year}")
-                d = http_get("https://archive-api.open-meteo.com/v1/archive", params=dict(
-                    latitude=lat, longitude=lon, start_date=f"{year}-01-01", end_date=end,
-                    hourly=METEO_VARS, models="era5", timezone="UTC",
-                )).json()
-                pd.DataFrame(d["hourly"]).to_parquet(part, index=False)
-                time.sleep(3)  # darmowy limit Open-Meteo: ok. 600 zapytań/min, 5000/h (ważonych)
-            frames.append(pd.read_parquet(part))
+            weather = fetch_meteo_year(name, lat, lon, year, METEO_VARS, "era5", "meteo")
+            # Pokrywa śnieżna jest tylko w ERA5-Land (0,1°) – osobne zapytanie, łączymy po czasie
+            snow = fetch_meteo_year(name, lat, lon, year, SNOW_VARS, "era5_land", "snow")
+            frames.append(weather.merge(snow, on="time", how="left"))
         df = pd.concat(frames, ignore_index=True).rename(columns={"time": "time_utc"})
         df["time_utc"] = pd.to_datetime(df["time_utc"])
         df = df.drop_duplicates("time_utc").sort_values("time_utc")

@@ -1,5 +1,6 @@
 """
-Zbieranie danych "na żywo" co godzinę: stany wody IMGW + pogoda IMGW + prognoza opadu Open-Meteo.
+Zbieranie danych "na żywo" co godzinę: stany wody IMGW + pogoda IMGW + prognoza opadu Open-Meteo
++ oficjalne ostrzeżenia hydrologiczne IMGW.
 Każde uruchomienie dopisuje nowe wiersze do plików CSV w data/live/ i usuwa duplikaty.
 
 Uruchomienie lokalne:   pip install requests pandas && python collect.py
@@ -47,12 +48,12 @@ def get(url, **params):
     return r.json()
 
 
-def append(df: pd.DataFrame, name: str, keys: list[str]):
+def append(df: pd.DataFrame, name: str, keys: list[str], keep: str = "last"):
     """Dopisz do CSV i usuń duplikaty (ten sam pomiar pobrany dwa razy)."""
     path = OUT / f"{name}.csv"
     if path.exists():
         df = pd.concat([pd.read_csv(path, dtype=str), df.astype(str)])
-    df = df.drop_duplicates(subset=keys, keep="last").sort_values(keys)
+    df = df.drop_duplicates(subset=keys, keep=keep).sort_values(keys)
     df.to_csv(path, index=False)
     print(f"{name}: {len(df)} wierszy")
 
@@ -116,7 +117,48 @@ def collect_forecast():
         append(pd.concat(frames), "forecast", ["point", "issued_at", "valid_at"])
 
 
+def collect_warnings():
+    """Oficjalne ostrzeżenia hydrologiczne IMGW dla całej Polski.
+    Jeden wiersz na ostrzeżenie; 'fetched_at' = kiedy pierwszy raz je zobaczyliśmy.
+    Kolumna 'dotyczy_zlewni' oznacza ostrzeżenia dla Małopolski / Śląska lub Wisły –
+    tych używamy do porównania z ostrzeżeniami z naszego modelu."""
+    try:
+        data = get("https://danepubliczne.imgw.pl/api/data/warningshydro")
+    except Exception as e:
+        print(f"ostrzeżenia: błąd {e}")
+        return
+    rows = []
+    for w in data:
+        obszary = w.get("obszary") or []
+        wojewodztwa = "; ".join(sorted({str(o.get("wojewodztwo", "")) for o in obszary}))
+        opisy = "; ".join(str(o.get("opis", "")) for o in obszary)
+        zlewnie = "; ".join(sorted({str(k) for o in obszary for k in (o.get("kod_zlewni") or [])}))
+        tekst = f"{wojewodztwa} {opisy} {w.get('przebieg', '')}".lower()
+        rows.append({
+            "numer": w.get("numer"),
+            "biuro": w.get("biuro"),
+            "opublikowano": w.get("opublikowano"),
+            "stopien": w.get("stopień"),
+            "zdarzenie": w.get("zdarzenie"),
+            "data_od": w.get("data_od"),
+            "data_do": w.get("data_do"),
+            "prawdopodobienstwo": w.get("prawdopodobienstwo"),
+            "przebieg": w.get("przebieg"),
+            "komentarz": w.get("komentarz"),
+            "wojewodztwa": wojewodztwa,
+            "obszary_opis": opisy,
+            "kod_zlewni": zlewnie,
+            "dotyczy_zlewni": any(s in tekst for s in ("małopolsk", "śląsk", "wisł")),
+            "fetched_at": NOW,
+        })
+    if rows:
+        append(pd.DataFrame(rows), "warnings_hydro", ["numer", "biuro", "opublikowano"], keep="first")
+    else:
+        print("ostrzeżenia: brak aktywnych ostrzeżeń")
+
+
 if __name__ == "__main__":
     collect_hydro()
     collect_synop()
     collect_forecast()
+    collect_warnings()
