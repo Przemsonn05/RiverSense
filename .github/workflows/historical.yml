@@ -1,0 +1,34 @@
+# Umieść w repozytorium jako: .github/workflows/historical.yml
+# Uruchamiane RĘCZNIE (zakładka Actions → fetch-historical-data → Run workflow).
+# Pobiera dane historyczne raz i commituje je do data/historical/.
+name: fetch-historical-data
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: collect          # ta sama grupa co zbieranie godzinowe – nie pushują jednocześnie
+  cancel-in-progress: false
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180    # pierwsze pobranie trwa zwykle 30–90 min (limity Open-Meteo)
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install requests pandas pyarrow
+      - run: python fetch_historical.py
+      - name: Commit danych historycznych
+        run: |
+          git config user.name "data-bot"
+          git config user.email "data-bot@users.noreply.github.com"
+          git add data/historical
+          git diff --cached --quiet || git commit -m "dane historyczne $(date -u +'%Y-%m-%d')"
+          git pull --rebase
+          git push

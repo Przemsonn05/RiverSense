@@ -218,3 +218,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Modele i wyniki eksperymentów (duże pliki)
+mlruns/
+models/*.pkl
+models/*.pt
