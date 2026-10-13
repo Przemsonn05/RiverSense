@@ -1,0 +1,8 @@
+# Pobieranie i przetwarzanie danych (collect.py, fetch_historical.py)
+pandas>=2.2
+pyarrow>=15.0
+requests>=2.31
+
+# Model
+numpy>=1.26
+scikit-learn>=1.4
