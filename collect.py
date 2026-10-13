@@ -17,29 +17,55 @@ OUT.mkdir(parents=True, exist_ok=True)
 NOW = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 # Stacje hydrologiczne IMGW: Kraków-Bielany (cel) + zlewnia powyżej Krakowa.
-# Uzupełnijcie brakujące (Skawa, Skawinka, Smolice) z lista_stacji_hydro.csv.
+# Ten sam zestaw co w danych historycznych (data/historical/stations_found.csv),
+# żeby każda cecha modelu dała się policzyć także na danych live.
 HYDRO_STATIONS = {
-    "150190340": "Kraków-Bielany (Wisła)",
+    # Wisła – od źródeł do Krakowa
+    "149180100": "Skoczów (Wisła)",
+    "149180240": "Goczałkowice (Wisła)",
     "149180210": "Zabrzeg (Wisła)",
     "149190060": "Jawiszowice (Wisła)",
     "150190170": "Pustynia (Wisła)",
-    "150190160": "Oświęcim (Soła)",
-    "149190120": "Czaniec (Soła)",
+    "150190260": "Smolice (Wisła)",
+    "150190340": "Kraków-Bielany (Wisła)",  # CEL PROGNOZY
+    # Soła
     "149190100": "Żywiec (Soła)",
+    "149190120": "Czaniec (Soła)",
+    "150190160": "Oświęcim (Soła)",
+    # Skawa i jej dopływ Stryszawka
+    "149190210": "Sucha Beskidzka (Skawa)",
+    "149190200": "Sucha Beskidzka (Stryszawka)",
+    "149190260": "Osielec (Skawa)",
+    "149190180": "Wadowice (Skawa)",
+    "149190170": "Zator (Skawa)",
+    # Przemsza
     "150190100": "Niwka (Biała Przemsza)",
+    "150190180": "Jeleń (Przemsza)",
+    # Dopływy w rejonie Krakowa
+    "149190270": "Radziszów (Skawinka)",
     "150190310": "Balice (Rudawa)",
 }
 
 # Stacje synoptyczne IMGW (opad, temperatura) – sprawdźcie ID w /api/data/synop
 SYNOP_STATIONS = {"12566": "Kraków-Balice", "12600": "Bielsko-Biała", "12625": "Zakopane"}
 
-# Punkty w zlewni do prognozy opadu z Open-Meteo
+# Punkty w zlewni do prognozy pogody z Open-Meteo – te same co w danych historycznych
+# (fetch_historical.py → METEO_POINTS), żeby nazwy i współrzędne się zgadzały.
 METEO_POINTS = {
     "krakow": (50.06, 19.94),
-    "wadowice": (49.88, 19.49),
-    "zywiec": (49.69, 19.19),
-    "bielsko": (49.82, 19.04),
+    "wadowice": (49.88, 19.49),           # Skawa
+    "makow_podhalanski": (49.73, 19.68),  # górna Skawa
+    "zywiec": (49.69, 19.19),             # Soła
+    "wisla_beskidy": (49.65, 18.86),      # źródła Wisły
+    "oswiecim": (50.04, 19.22),
+    "katowice": (50.26, 19.02),           # Przemsza
 }
+
+# Zmienne prognozy – nazwy jak w danych historycznych.
+FORECAST_VARS = "precipitation,rain,snowfall,snow_depth,temperature_2m"
+# Wilgotność gleby 0–7 cm (jak w historii z ERA5) jest tylko w modelu ECMWF,
+# więc pobieramy ją osobnym zapytaniem i dołączamy po czasie.
+SOIL_VAR = "soil_moisture_0_to_7cm"
 
 
 def get(url, **params):
@@ -104,10 +130,21 @@ def collect_forecast():
             d = get(
                 "https://api.open-meteo.com/v1/forecast",
                 latitude=lat, longitude=lon, timezone="UTC",
-                hourly="precipitation,rain,snowfall,snow_depth,temperature_2m,soil_moisture_0_to_1cm",
-                past_days=1, forecast_days=3,
+                hourly=FORECAST_VARS, past_days=1, forecast_days=3,
             )
             df = pd.DataFrame(d["hourly"]).rename(columns={"time": "valid_at"})
+            # Wilgotność gleby 0–7 cm z ECMWF; przy błędzie zostaje pusta kolumna, reszta się zapisuje
+            try:
+                s = get(
+                    "https://api.open-meteo.com/v1/ecmwf",
+                    latitude=lat, longitude=lon, timezone="UTC",
+                    hourly=SOIL_VAR, past_days=1, forecast_days=3,
+                )
+                soil = pd.DataFrame(s["hourly"]).rename(columns={"time": "valid_at"})
+                df = df.merge(soil, on="valid_at", how="left")
+            except Exception as e:
+                print(f"open-meteo ecmwf {name}: błąd {e}")
+                df[SOIL_VAR] = pd.NA
             df.insert(0, "point", name)
             df.insert(1, "issued_at", NOW[:13] + ":00Z")  # godzina pobrania prognozy
             frames.append(df)
