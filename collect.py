@@ -67,6 +67,9 @@ FORECAST_VARS = "precipitation,rain,snowfall,snow_depth,temperature_2m"
 # więc pobieramy ją osobnym zapytaniem i dołączamy po czasie.
 SOIL_VAR = "soil_moisture_0_to_7cm"
 
+# Województwa, w których leży zlewnia Wisły powyżej Krakowa – filtr ostrzeżeń IMGW
+WOJ_ZLEWNI = {"małopolskie", "śląskie"}
+
 
 def get(url, **params):
     r = requests.get(url, params=params, timeout=30)
@@ -157,8 +160,10 @@ def collect_forecast():
 def collect_warnings():
     """Oficjalne ostrzeżenia hydrologiczne IMGW dla całej Polski.
     Jeden wiersz na ostrzeżenie; 'fetched_at' = kiedy pierwszy raz je zobaczyliśmy.
-    Kolumna 'dotyczy_zlewni' oznacza ostrzeżenia dla Małopolski / Śląska lub Wisły –
-    tych używamy do porównania z ostrzeżeniami z naszego modelu."""
+    Kolumna 'dotyczy_zlewni' oznacza ostrzeżenia dla woj. małopolskiego / śląskiego
+    (zlewnia Wisły powyżej Krakowa) – tych używamy do porównania z ostrzeżeniami z naszego modelu.
+    Dopasowanie po dokładnej nazwie województwa: szukanie tekstu 'śląsk' łapało też dolnośląskie,
+    a 'wisł' – Wisłok, Wisłokę i Wisłę poniżej Krakowa."""
     try:
         data = get("https://danepubliczne.imgw.pl/api/data/warningshydro")
     except Exception as e:
@@ -167,10 +172,10 @@ def collect_warnings():
     rows = []
     for w in data:
         obszary = w.get("obszary") or []
-        wojewodztwa = "; ".join(sorted({str(o.get("wojewodztwo", "")) for o in obszary}))
+        woj = {str(o.get("wojewodztwo", "")).strip().lower() for o in obszary}
+        wojewodztwa = "; ".join(sorted(woj))
         opisy = "; ".join(str(o.get("opis", "")) for o in obszary)
         zlewnie = "; ".join(sorted({str(k) for o in obszary for k in (o.get("kod_zlewni") or [])}))
-        tekst = f"{wojewodztwa} {opisy} {w.get('przebieg', '')}".lower()
         rows.append({
             "numer": w.get("numer"),
             "biuro": w.get("biuro"),
@@ -185,7 +190,7 @@ def collect_warnings():
             "wojewodztwa": wojewodztwa,
             "obszary_opis": opisy,
             "kod_zlewni": zlewnie,
-            "dotyczy_zlewni": any(s in tekst for s in ("małopolsk", "śląsk", "wisł")),
+            "dotyczy_zlewni": bool(woj & WOJ_ZLEWNI),
             "fetched_at": NOW,
         })
     if rows:

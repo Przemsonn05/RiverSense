@@ -102,11 +102,18 @@ def list_zip_urls(url):
 
 
 def parse_imgw_csv(raw: bytes) -> pd.DataFrame:
-    """Plik dobowy IMGW: bez nagłówka, kodowanie cp1250, kolumny:
+    """Plik dobowy IMGW: bez nagłówka, kolumny:
     kod, nazwa stacji, rzeka, rok hydrologiczny, wskaźnik miesiąca hydro, dzień,
-    stan wody [cm], przepływ [m3/s], temperatura wody [°C], miesiąc kalendarzowy."""
-    text = raw.decode("cp1250", errors="replace")
-    df = pd.read_csv(io.StringIO(text), header=None, sep=",", quotechar='"',
+    stan wody [cm], przepływ [m3/s], temperatura wody [°C], miesiąc kalendarzowy.
+    Zwykle cp1250 i separator ',', ale lata hydrologiczne 2023–2024 IMGW wydał
+    w UTF-8 z BOM i z separatorem ';' (patrz UWAGA.txt w archiwum) – wykrywamy oba."""
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        text = raw.decode("cp1250", errors="replace")
+    first_line = text.split("\n", 1)[0]
+    sep = ";" if first_line.count(";") > first_line.count(",") else ","
+    df = pd.read_csv(io.StringIO(text), header=None, sep=sep, quotechar='"',
                      dtype=str, skipinitialspace=True, on_bad_lines="skip")
     if df.shape[1] < 10:
         return pd.DataFrame()
