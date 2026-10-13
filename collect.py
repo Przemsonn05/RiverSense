@@ -6,6 +6,7 @@ Każde uruchomienie dopisuje nowe wiersze do plików CSV w data/live/ i usuwa du
 Uruchomienie lokalne:   pip install requests pandas && python collect.py
 Automatycznie:          .github/workflows/collect.yml (GitHub Actions, co godzinę)
 """
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -71,10 +72,23 @@ SOIL_VAR = "soil_moisture_0_to_7cm"
 WOJ_ZLEWNI = {"małopolskie", "śląskie"}
 
 
-def get(url, **params):
-    r = requests.get(url, params=params, timeout=30)
-    r.raise_for_status()
-    return r.json()
+def get(url, tries=4, **params):
+    """GET z ponawianiem: serwery GitHuba dzielą IP, więc Open-Meteo potrafi zwrócić 429
+    (limit zapytań) – wtedy czekamy i próbujemy ponownie, zamiast tracić godzinę danych."""
+    for attempt in range(tries):
+        try:
+            r = requests.get(url, params=params, timeout=30)
+            if r.status_code == 429 or r.status_code >= 500:
+                raise requests.HTTPError(f"HTTP {r.status_code}", response=r)
+            r.raise_for_status()
+            return r.json()
+        except (requests.ConnectionError, requests.Timeout, requests.HTTPError) as e:
+            status = getattr(e.response, "status_code", None)
+            if attempt == tries - 1 or (status is not None and status < 500 and status != 429):
+                raise
+            wait = 20 * (attempt + 1)
+            print(f"  {url}: {e} – ponawiam za {wait} s")
+            time.sleep(wait)
 
 
 def append(df: pd.DataFrame, name: str, keys: list[str], keep: str = "last"):
@@ -126,35 +140,40 @@ def collect_synop():
 
 def collect_forecast():
     """Zapisujemy też prognozę z chwili pobrania – potrzebna, żeby uczyć model
-    na prognozach, które były znane w danym momencie (bez 'zaglądania w przyszłość')."""
+    na prognozach, które były znane w danym momencie (bez 'zaglądania w przyszłość').
+    Wszystkie punkty idą w jednym zapytaniu (Open-Meteo przyjmuje listę współrzędnych),
+    żeby nie wpadać w limit zapytań. Osobny plik na każdy miesiąc (forecast_RRRR-MM.csv),
+    bo jeden plik urósłby do ~50 MB w półtora miesiąca."""
+    names = list(METEO_POINTS)
+    coords = dict(
+        latitude=",".join(str(lat) for lat, _ in METEO_POINTS.values()),
+        longitude=",".join(str(lon) for _, lon in METEO_POINTS.values()),
+        timezone="UTC", past_days=1, forecast_days=3,
+    )
+    try:
+        weather = get("https://api.open-meteo.com/v1/forecast", hourly=FORECAST_VARS, **coords)
+    except Exception as e:
+        print(f"open-meteo: błąd {e}")
+        return
+    # Wilgotność gleby 0–7 cm z ECMWF; przy błędzie zostaje pusta kolumna, reszta się zapisuje
+    try:
+        soil = get("https://api.open-meteo.com/v1/ecmwf", hourly=SOIL_VAR, **coords)
+    except Exception as e:
+        print(f"open-meteo ecmwf: błąd {e}")
+        soil = [None] * len(names)
+
     frames = []
-    for name, (lat, lon) in METEO_POINTS.items():
-        try:
-            d = get(
-                "https://api.open-meteo.com/v1/forecast",
-                latitude=lat, longitude=lon, timezone="UTC",
-                hourly=FORECAST_VARS, past_days=1, forecast_days=3,
-            )
-            df = pd.DataFrame(d["hourly"]).rename(columns={"time": "valid_at"})
-            # Wilgotność gleby 0–7 cm z ECMWF; przy błędzie zostaje pusta kolumna, reszta się zapisuje
-            try:
-                s = get(
-                    "https://api.open-meteo.com/v1/ecmwf",
-                    latitude=lat, longitude=lon, timezone="UTC",
-                    hourly=SOIL_VAR, past_days=1, forecast_days=3,
-                )
-                soil = pd.DataFrame(s["hourly"]).rename(columns={"time": "valid_at"})
-                df = df.merge(soil, on="valid_at", how="left")
-            except Exception as e:
-                print(f"open-meteo ecmwf {name}: błąd {e}")
-                df[SOIL_VAR] = pd.NA
-            df.insert(0, "point", name)
-            df.insert(1, "issued_at", NOW[:13] + ":00Z")  # godzina pobrania prognozy
-            frames.append(df)
-        except Exception as e:
-            print(f"open-meteo {name}: błąd {e}")
-    if frames:
-        append(pd.concat(frames), "forecast", ["point", "issued_at", "valid_at"])
+    for name, d, s in zip(names, weather, soil):
+        df = pd.DataFrame(d["hourly"]).rename(columns={"time": "valid_at"})
+        if s is not None:
+            df = df.merge(pd.DataFrame(s["hourly"]).rename(columns={"time": "valid_at"}),
+                          on="valid_at", how="left")
+        else:
+            df[SOIL_VAR] = pd.NA
+        df.insert(0, "point", name)
+        df.insert(1, "issued_at", NOW[:13] + ":00Z")  # godzina pobrania prognozy
+        frames.append(df)
+    append(pd.concat(frames), f"forecast_{NOW[:7]}", ["point", "issued_at", "valid_at"])
 
 
 def collect_warnings():

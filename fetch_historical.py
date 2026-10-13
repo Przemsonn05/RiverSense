@@ -32,23 +32,33 @@ CACHE.mkdir(parents=True, exist_ok=True)
 
 IMGW_DAILY = "https://danepubliczne.imgw.pl/data/dane_pomiarowo_obserwacyjne/dane_hydrologiczne/dobowe/"
 
-# Stacje po kodzie IMGW (pewne) ...
+# Stacje po kodzie IMGW – ten sam zestaw co HYDRO_STATIONS w collect.py.
+# Tylko po kodzie: wybór po nazwie łapał też inne stacje o tej samej nazwie (np. jezioro Jeleń).
 STATION_CODES = {
-    "150190340",  # Kraków-Bielany, Wisła – CEL PROGNOZY
-    "149180210",  # Zabrzeg, Wisła
-    "149190060",  # Jawiszowice, Wisła
-    "150190170",  # Pustynia, Wisła
-    "150190160",  # Oświęcim, Soła
-    "149190120",  # Czaniec, Soła
-    "149190100",  # Żywiec, Soła
-    "150190100",  # Niwka, Biała Przemsza
-    "150190310",  # Balice, Rudawa
-}
-# ... oraz po nazwie (dla stacji, których kodu nie znamy na pewno: Skawa, Skawinka, Przemsza, Smolice).
-# Skrypt wypisze, które z nich znalazł – sprawdź stations_found.csv.
-STATION_NAMES = {
-    "SMOLICE", "WADOWICE", "SUCHA BESKIDZKA", "OSIELEC", "ZATOR", "RADZISZÓW",
-    "JELEŃ", "CHEŁMEK", "GOCZAŁKOWICE", "SKOCZÓW", "BRZESZCZE", "KRAKÓW-BIELANY",
+    # Wisła
+    "149180100",  # Skoczów
+    "149180240",  # Goczałkowice
+    "149180210",  # Zabrzeg
+    "149190060",  # Jawiszowice
+    "150190170",  # Pustynia
+    "150190260",  # Smolice
+    "150190340",  # Kraków-Bielany – CEL PROGNOZY
+    # Soła
+    "149190100",  # Żywiec
+    "149190120",  # Czaniec-Kobiernice
+    "150190160",  # Oświęcim
+    # Skawa i Stryszawka
+    "149190210",  # Sucha Beskidzka (Skawa)
+    "149190200",  # Sucha Beskidzka (Stryszawka)
+    "149190260",  # Osielec
+    "149190180",  # Wadowice
+    "149190170",  # Zator
+    # Przemsza
+    "150190100",  # Niwka (Biała Przemsza)
+    "150190180",  # Jeleń (Przemsza)
+    # Dopływy w rejonie Krakowa
+    "149190270",  # Radziszów (Skawinka)
+    "150190310",  # Balice (Rudawa)
 }
 
 # Punkty pogodowe w zlewni Wisły powyżej Krakowa
@@ -138,8 +148,7 @@ def fetch_imgw_daily():
         dfs = [parse_imgw_csv(zf.read(n)) for n in zf.namelist() if n.lower().endswith((".csv", ".txt"))]
         df = pd.concat(dfs) if dfs else pd.DataFrame()
         if not df.empty:
-            keep = df["station_id"].isin(STATION_CODES) | df["station"].str.upper().isin(STATION_NAMES)
-            df = df[keep]
+            df = df[df["station_id"].isin(STATION_CODES)]
         df.to_parquet(part, index=False)
         frames.append(df)
         time.sleep(0.5)  # grzecznie wobec serwera IMGW
