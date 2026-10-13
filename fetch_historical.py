@@ -115,8 +115,11 @@ def parse_imgw_csv(raw: bytes) -> pd.DataFrame:
     """Plik dobowy IMGW: bez nagłówka, kolumny:
     kod, nazwa stacji, rzeka, rok hydrologiczny, wskaźnik miesiąca hydro, dzień,
     stan wody [cm], przepływ [m3/s], temperatura wody [°C], miesiąc kalendarzowy.
-    Zwykle cp1250 i separator ',', ale lata hydrologiczne 2023–2024 IMGW wydał
-    w UTF-8 z BOM i z separatorem ';' (patrz UWAGA.txt w archiwum) – wykrywamy oba."""
+    Zwykle cp1250 i separator ',', ale IMGW wydał lata hydrologiczne 2023–2024 inaczej
+    (patrz UWAGA.txt w archiwum) – obsługujemy wszystkie trzy warianty:
+      2023: UTF-8 z BOM, separator ';'
+      2024: cp1250, ale cały wiersz w cudzysłowie: "149180020,CHAŁUPKI,...,""2024"",..."
+      reszta: cp1250, separator ','"""
     try:
         text = raw.decode("utf-8-sig")
     except UnicodeDecodeError:
@@ -125,6 +128,10 @@ def parse_imgw_csv(raw: bytes) -> pd.DataFrame:
     sep = ";" if first_line.count(";") > first_line.count(",") else ","
     df = pd.read_csv(io.StringIO(text), header=None, sep=sep, quotechar='"',
                      dtype=str, skipinitialspace=True, on_bad_lines="skip")
+    if df.shape[1] == 1:
+        # Wariant 2024: cały wiersz był jednym polem w cudzysłowie – parsujemy jego treść
+        df = pd.read_csv(io.StringIO("\n".join(df[0].dropna())), header=None, sep=",",
+                         quotechar='"', dtype=str, skipinitialspace=True, on_bad_lines="skip")
     if df.shape[1] < 10:
         return pd.DataFrame()
     df = df.iloc[:, :10]
@@ -135,7 +142,8 @@ def parse_imgw_csv(raw: bytes) -> pd.DataFrame:
 
 def fetch_imgw_daily():
     print("IMGW: szukam plików archiwum dobowego…")
-    urls = list_zip_urls(IMGW_DAILY)
+    # Tylko codz_* (stany i przepływy); zjaw_* to zjawiska lodowe w innym układzie kolumn
+    urls = [u for u in list_zip_urls(IMGW_DAILY) if u.split("/")[-1].lower().startswith("codz")]
     print(f"IMGW: {len(urls)} plików ZIP")
     frames = []
     for i, url in enumerate(urls, 1):
