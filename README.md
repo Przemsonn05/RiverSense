@@ -66,6 +66,21 @@ nie ma pomiarów w archiwum IMGW, dlatego do modelu używamy danych od 1983 r.
 
 `data/historical/stations_found.csv` zawiera spis stacji z zakresem dat i maksymalnym stanem.
 
+### `data/historical/ice_daily.parquet`: zjawiska lodowe, dobowe
+
+Źródło: archiwum IMGW (pliki `zjaw_*`, opis w `ZJAW_publiczne_format.txt`). Wiersz jest tylko
+dla dni, w których wystąpiło zjawisko lodowe lub zarastanie; brak wiersza oznacza brak zjawisk.
+Lód (zwłaszcza zator) podnosi stan wody bez wzrostu przepływu, więc przy czyszczeniu zimowe
+skoki stanu na stacjach z lodem nie są błędami odczytu.
+
+| Kolumna | Opis |
+|---|---|
+| `date`, `station_id` | doba i stacja, jak w `hydro_daily` |
+| `ice_code` | kod IMGW: `01` śryż, `02` kra, `03` lód brzegowy, `04` pokrywa lodowa, `05` zator lodowy, `09` zator śryżowy i in. |
+| `ice_pct` | udział zjawiska lodowego [%] |
+| `ice_thickness_cm` | grubość lodu [cm]; `NaN` = brak pomiaru |
+| `overgrowth_code` | kod zarastania koryta (układ `dpw`), latem |
+
 ### `data/live/hydro.csv`: bieżące stany wody
 
 Źródło: API IMGW. Te same stacje co w danych historycznych.
@@ -73,10 +88,28 @@ nie ma pomiarów w archiwum IMGW, dlatego do modelu używamy danych od 1983 r.
 | Kolumna | Opis |
 |---|---|
 | `station_id` | kod stacji IMGW |
-| `measured_at` | czas pomiaru, czas lokalny (Europe/Warsaw), nie UTC |
+| `measured_at` | czas pomiaru w **UTC** (bez oznaczenia strefy) |
 | `water_level_cm` | stan wody [cm], odpowiednik `level_cm` |
 | `warning_cm`, `alarm_cm` | stan ostrzegawczy i alarmowy stacji: progi do ostrzeżeń, nie cechy modelu |
-| `flow_m3s`, `flow_at`, `fetched_at` | pomocnicze, nieużywane w modelu |
+| `ice_code`, `ice_at` | kod zjawiska lodowego (`0` = brak) i czas jego obserwacji, od 15.10.2026 |
+| `flow_m3s`, `flow_at` | przepływ i czas jego pomiaru; IMGW aktualizuje go rzadko (dla Krakowa ostatnio 11.2025), nieużywane |
+| `fetched_at` | kiedy pomiar pobraliśmy **po raz pierwszy** (UTC) – czyli od kiedy model mógł go znać |
+
+Stacja Stryszawka (149190200) od czerwca 2026 r. zwraca ciągle ten sam stary pomiar.
+
+### `data/live/stations_meta.csv`: metadane stacji
+
+Źródło: API IMGW, od 15.10.2026. Nowy wiersz pojawia się tylko wtedy, gdy zmieni się rzędna
+zera wodowskazu albo progi, więc plik jest historią zmian stacji. Zmiana zera wodowskazu
+przesuwa wszystkie odczyty stanu i trzeba ją uwzględnić przy łączeniu z historią.
+
+| Kolumna | Opis |
+|---|---|
+| `station_id`, `station` | kod i nazwa stacji |
+| `lat`, `lon`, `river_km` | położenie i kilometr biegu rzeki (kolejność stacji wzdłuż rzeki) |
+| `gauge_zero_m` | rzędna zera wodowskazu [m n.p.m.] |
+| `warning_cm`, `alarm_cm` | stan ostrzegawczy i alarmowy |
+| `fetched_at` | od kiedy obowiązują te wartości (UTC) |
 
 ### `data/live/forecast_RRRR-MM.csv`: prognozy pogody
 
@@ -94,7 +127,9 @@ Przy prognozie wykonywanej w chwili T wolno używać tylko wierszy z `issued_at 
 
 ### `data/live/warnings_hydro.csv`: ostrzeżenia hydrologiczne IMGW
 
-Wszystkie aktywne ostrzeżenia IMGW w Polsce. Kolumna `dotyczy_zlewni` oznacza ostrzeżenia
+Wszystkie aktywne ostrzeżenia IMGW w Polsce. Czasy w czasie lokalnym (Europe/Warsaw);
+`data_do = 9999-12-31` oznacza ostrzeżenie bez ustalonego końca. `stopien = -1` to ostrzeżenie
+przed suszą hydrologiczną, a nie odwołanie. Kolumna `dotyczy_zlewni` oznacza ostrzeżenia
 dla woj. małopolskiego i śląskiego. Plik służy wyłącznie do porównania ostrzeżeń naszego
 modelu z ostrzeżeniami IMGW.
 
@@ -148,10 +183,15 @@ i temperatura zostają w modelu ze względu na wezbrania roztopowe.
 
 ## Uwagi
 
-- Strefy czasowe: `measured_at` w `hydro.csv` jest w czasie lokalnym, a pozostałe dane w UTC.
+- Strefy czasowe: wszystkie dane są w UTC, także czasy IMGW w `hydro.csv`, `synop.csv`
+  (godziny synoptyczne) i `stations_meta.csv`, mimo braku oznaczenia strefy. Wyjątek: ostrzeżenia
+  w `warnings_hydro.csv` (`opublikowano`, `data_od`, `data_do`) są w czasie lokalnym
+  (Europe/Warsaw) – ostrzeżenie „opublikowane 09:13” pobraliśmy o 08:01 UTC.
+- Wartość dobowa w archiwum IMGW: opis formatu (`CODZ_publiczne_format.txt`) nie mówi, czy to
+  odczyt poranny, czy średnia z doby. Od tego zależy, jak agregować dane live do doby.
 - Rozdzielczość: historyczne stany wody są dobowe, więc model jest dobowy, a dane live agregujemy do doby.
 - Luka: brak stanów wody od 1.11.2025 do 11.10.2026. IMGW opublikuje ten rok później,
-  a do treningu nie jest on potrzebny.
+  a do treningu nie jest on potrzebny. Pogoda ERA5 nie ma tej luki.
 - Model uczony na faktycznym opadzie będzie na prognozach opadu gorszy niż w testach historycznych.
   Ocena tej różnicy jest jednym z celów testu na danych live.
 
@@ -163,7 +203,8 @@ i temperatura zostają w modelu ze względu na wezbrania roztopowe.
 | `historical.yml` | ręcznie (Actions → fetch-historical-data → Run workflow) | uruchamia `fetch_historical.py` i commituje `data/historical/` |
 
 Danych historycznych nie trzeba pobierać ponownie, chyba że IMGW opublikuje nowy rok
-albo zmieni się lista stacji. Przed pracą zawsze wykonaj `git pull`, bo bot commituje dane
+albo zmieni się lista stacji. Pogoda jest aktualizowana przyrostowo (pobierany jest tylko
+ostatni rok), więc ponowne uruchomienie `historical.yml` dociąga ERA5 dla okresu danych live. Przed pracą zawsze wykonaj `git pull`, bo bot commituje dane
 co godzinę. Plików w `data/` nie edytujemy ręcznie.
 
 Wymagania: `pip install -r requirements.txt`.

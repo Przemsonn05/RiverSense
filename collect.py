@@ -102,17 +102,35 @@ def append(df: pd.DataFrame, name: str, keys: list[str], keep: str = "last"):
 
 
 def collect_hydro():
-    rows = []
+    """Stany wody + metadane stacji. Czasy z API IMGW (stan_wody_data_pomiaru itd.) są w UTC,
+    mimo braku oznaczenia strefy: o 15:15 UTC API podaje pomiar z 14:50, a w całym hydro.csv
+    nie ma pomiaru późniejszego niż fetched_at."""
+    rows, meta = [], []
     for sid, label in HYDRO_STATIONS.items():
         try:
             rec = get(f"https://danepubliczne.imgw.pl/api/data/hydro/id/{sid}")[0]
             rows.append({
                 "station_id": sid,
                 "station": label,
-                "measured_at": rec["stan_wody_data_pomiaru"],  # czas lokalny IMGW
+                "measured_at": rec["stan_wody_data_pomiaru"],  # UTC, bez oznaczenia strefy
                 "water_level_cm": rec["stan_wody"],
                 "flow_m3s": rec["przeplyw"],
                 "flow_at": rec["przeplyw_data"],
+                "warning_cm": rec["stan_ostrzegawczy"],
+                "alarm_cm": rec["stan_alarmowy"],
+                # Kod zjawiska lodowego IMGW (0 = brak, 1–43 jak w ZJAW_publiczne_format.txt):
+                # lód podnosi stan wody bez wzrostu przepływu
+                "ice_code": rec.get("zjawisko_lodowe"),
+                "ice_at": rec.get("zjawisko_lodowe_data_pomiaru"),
+                "fetched_at": NOW,
+            })
+            meta.append({
+                "station_id": sid,
+                "station": label,
+                "lat": rec.get("lat"),
+                "lon": rec.get("lon"),
+                "river_km": rec.get("kilometr_biegu_rzeki"),
+                "gauge_zero_m": rec.get("rzedna_zerawodowskazu"),  # rzędna zera wodowskazu [m n.p.m.]
                 "warning_cm": rec["stan_ostrzegawczy"],
                 "alarm_cm": rec["stan_alarmowy"],
                 "fetched_at": NOW,
@@ -120,7 +138,12 @@ def collect_hydro():
         except Exception as e:  # jedna padnięta stacja nie zatrzymuje reszty
             print(f"hydro {sid}: błąd {e}")
     if rows:
-        append(pd.DataFrame(rows), "hydro", ["station_id", "measured_at"])
+        # keep="first": fetched_at = kiedy pomiar był dostępny po raz pierwszy (to wiedział model)
+        append(pd.DataFrame(rows), "hydro", ["station_id", "measured_at"], keep="first")
+    if meta:
+        # Nowy wiersz tylko przy zmianie zera wodowskazu lub progów – historia zmian stacji
+        append(pd.DataFrame(meta), "stations_meta",
+               ["station_id", "gauge_zero_m", "warning_cm", "alarm_cm"], keep="first")
 
 
 def collect_synop():
@@ -172,6 +195,7 @@ def collect_forecast():
             df[SOIL_VAR] = pd.NA
         df.insert(0, "point", name)
         df.insert(1, "issued_at", NOW[:13] + ":00Z")  # godzina pobrania prognozy
+        # valid_at przychodzi z Open-Meteo bez strefy, ale zapytanie ma timezone="UTC"
         frames.append(df)
     append(pd.concat(frames), f"forecast_{NOW[:7]}", ["point", "issued_at", "valid_at"])
 
