@@ -108,7 +108,7 @@ Dane live są surowe: wszystko zapisane jako tekst, możliwe przestarzałe pomia
 6. **Dwie tabele wynikowe:**
    - `forecast_archive` – wszystkie prognozy (do oceny trafności i testu na żywo),
    - `forecast_latest` – dla każdej godziny `valid_at` najnowsza prognoza wydana **przed** tą godziną (to, co model naprawdę wiedział w danym momencie).
-7. **„Obserwowany” opad dla okresu live:** ERA5 jest dostępne z ok. 6-dniowym opóźnieniem i dociągane przez `historical.yml` (pobranie przyrostowe, ok. minuty). Dla ostatnich ~6 dni, których ERA5 jeszcze nie ma, używamy godzin z `lead_h` od −24 do 0 z najnowszej prognozy (`source = forecast`).
+7. **„Obserwowany” opad dla okresu live:** ERA5 jest dostępne z ok. 6-dniowym opóźnieniem i dociągane przez `historical.yml` (pobranie przyrostowe, ok. minuty). Dla ostatnich ~6 dni, których ERA5 jeszcze nie ma, używamy godzin z `lead_h` od −48 do 0 z najnowszej prognozy (`source = forecast`; analiza sprzed 24–48 h tylko tam, gdzie nie ma nowszej).
 
 **C. Pogoda zmierzona – `synop.csv`**
 
@@ -190,7 +190,7 @@ src/data/
 ├── combine.py     # łączenie historii i live
 └── build.py       # python -m src.data.build – wszystko po kolei + testy + raport
 tests/test_data.py
-notebooks/01_data_check.ipynb   # szybki podgląd wyników (nie logika!)
+notebooks/RiverSense.ipynb      # główny notatnik: wstęp, preprocessing, EDA (bez logiki czyszczenia!)
 ```
 
 Zasada: notebooki tylko **używają** funkcji z `src/data/`, nie zawierają własnej logiki czyszczenia – inaczej `predict.py` liczyłby dane inaczej niż trening.

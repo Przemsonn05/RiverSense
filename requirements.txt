@@ -3,6 +3,10 @@ pandas>=2.2
 pyarrow>=15.0
 requests>=2.31
 
+# Notatniki (EDA)
+ipykernel>=6.29
+matplotlib>=3.8
+
 # Model
 numpy>=1.26
 scikit-learn>=1.4

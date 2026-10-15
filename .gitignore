@@ -225,3 +225,6 @@ models/*.pkl
 models/*.pt
 # Pliki pośrednie fetch_historical.py
 data/cache/
+
+# Tabele wynikowe – odtwarzalne poleceniem python -m src.data.build
+data/processed/
