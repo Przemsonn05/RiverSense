@@ -1,6 +1,6 @@
 # Raport jakości danych
 
-Wygenerowano: 2026-10-15 16:05 UTC · `python -m src.data.build`
+Wygenerowano: 2026-10-18 21:43 UTC · `python -m src.data.build`
 Definicja doby: `06utc` (otwarta decyzja nr 1, `config.DAILY_DEFINITION`)
 
 ## Tabele
@@ -8,15 +8,15 @@ Definicja doby: `06utc` (otwarta decyzja nr 1, `config.DAILY_DEFINITION`)
 | tabela | wiersze |
 |---|---|
 | stations | 19 |
-| levels_daily | 312341 |
-| levels_hourly | 1330 |
-| meteo_hourly | 2871057 |
-| meteo_daily | 119637 |
-| forecast_archive | 34848 |
-| forecast_latest | 769 |
-| synop_hourly | 191 |
-| warnings | 96 |
-| levels_daily_wide | 16439 |
+| levels_daily | 312398 |
+| levels_hourly | 2812 |
+| meteo_hourly | 2871610 |
+| meteo_daily | 119658 |
+| forecast_archive | 86592 |
+| forecast_latest | 1273 |
+| synop_hourly | 425 |
+| warnings | 100 |
+| levels_daily_wide | 16442 |
 
 ## Stany wody – historia (1980-11-01 – 2025-10-31)
 
@@ -73,7 +73,7 @@ albo naturalna zmiana koryta / praca zbiornika).
 
 ## Stany wody – live
 
-- Wiersze surowe: 1226, duplikaty: 0, mediana opóźnienia pomiaru: 0.69 h
+- Wiersze surowe: 2810, duplikaty: 0, mediana opóźnienia pomiaru: 0.69 h
 - Przestarzałe odczyty (> 3 h, odrzucone): {'149190200': 1}
 - Usunięte skoki godzinowe: 0
 
@@ -86,17 +86,17 @@ albo naturalna zmiana koryta / praca zbiornika).
 | 149190100 | 3 | 0 | 3 |
 | 149190120 | 3 | 0 | 3 |
 | 149190170 | 17 | 15 | 2 |
-| 149190180 | 17 | 15 | 2 |
-| 149190200 | 70 | 70 | 0 |
+| 149190180 | 18 | 15 | 3 |
+| 149190200 | 148 | 148 | 0 |
 | 149190210 | 17 | 15 | 2 |
-| 149190260 | 17 | 15 | 2 |
+| 149190260 | 36 | 34 | 2 |
 | 149190270 | 17 | 15 | 2 |
 | 150190100 | 5 | 0 | 5 |
-| 150190160 | 4 | 0 | 4 |
+| 150190160 | 8 | 1 | 7 |
 | 150190170 | 3 | 0 | 3 |
 | 150190180 | 17 | 15 | 2 |
 | 150190260 | 17 | 15 | 2 |
-| 150190310 | 3 | 0 | 3 |
+| 150190310 | 10 | 0 | 10 |
 | 150190340 | 3 | 0 | 3 |
 
 Zmiany zera wodowskazu / progów w `stations_meta.csv`:
@@ -106,13 +106,13 @@ _brak_
 ## Pogoda
 
 - ERA5 do: 2026-10-09 23:00:00+00:00, brakujące godziny w ERA5: 0, wartości podejrzane: 0
-- Prognozy: 52 wydań (2026-10-13 09:00:00+00:00 – 2026-10-15 14:00:00+00:00), pominięte godziny wydań: 2, lead_h (-47, 71)
+- Prognozy: 129 wydań (2026-10-13 09:00:00+00:00 – 2026-10-18 21:00:00+00:00), pominięte godziny wydań: 4, lead_h (-47, 71)
 - Wilgotność gleby w prognozach: braki 96, uzupełnione 0
 - Godziny bez ERA5 i bez analizy z prognozy (po końcu ERA5): 48 (2026-10-10 00:00:00+00:00 – 2026-10-11 23:00:00+00:00)
 
 ## Ostrzeżenia IMGW
 
-- Wszystkie: 96, dla zlewni: 27, susza: 94
+- Wszystkie: 100, dla zlewni: 27, susza: 94
 
 Ostrzeżenia powodziowe dla zlewni:
 
