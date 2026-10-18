@@ -22,9 +22,13 @@ def parse(raw):
         "flow_m3s": pd.to_numeric(raw["flow_m3s"], errors="coerce"),
         "flow_at": utils.to_utc(raw["flow_at"], config.TZ_IMGW_HYDRO),
     })
-    # Kolumna lodu jest zbierana od 15.10.2026; starsze wiersze: brak informacji = brak lodu
+    # Kolumna lodu jest zbierana od 15.10.2026; starsze wiersze: brak informacji = brak lodu.
+    # API zwraca ostatnie zaobserwowane zjawisko, nawet sprzed miesięcy – liczy się tylko świeże.
     ice = raw["ice_code"] if "ice_code" in raw else pd.Series(pd.NA, index=raw.index)
-    df["has_ice"] = pd.to_numeric(ice, errors="coerce").fillna(0) > 0
+    ice_at = utils.to_utc(raw["ice_at"] if "ice_at" in raw else pd.Series(pd.NA, index=raw.index),
+                          config.TZ_IMGW_HYDRO)
+    fresh = (df["measured_at"] - ice_at) <= pd.Timedelta(hours=config.ICE_MAX_AGE_HOURS)
+    df["has_ice"] = (pd.to_numeric(ice, errors="coerce").fillna(0) > 0) & fresh
     # Przepływ tylko świeży – IMGW aktualizuje go rzadko
     flow_age = df["fetched_at"] - df["flow_at"]
     df.loc[~(flow_age <= pd.Timedelta(hours=config.FLOW_MAX_AGE_HOURS)), "flow_m3s"] = float("nan")

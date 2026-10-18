@@ -19,6 +19,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main   # najnowszy stan gałęzi, a nie commit z chwili wyzwolenia – inaczej dwa
+                      # uruchomienia w tej samej godzinie kończą się konfliktem przy push
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"

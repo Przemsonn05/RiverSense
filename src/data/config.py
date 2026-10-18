@@ -74,6 +74,7 @@ MAX_GAP_DAYS = 3        # historia: interpolujemy luki ≤ 3 dni
 MAX_GAP_HOURS = 3       # live: interpolujemy luki ≤ 3 h
 STALE_HOURS = 3         # live: pomiar starszy od pobrania o > 3 h jest przestarzały
 FLOW_MAX_AGE_HOURS = 24 # live: przepływ tylko, gdy młodszy niż 24 h
+ICE_MAX_AGE_HOURS = 48  # live: API podaje ostatnie zjawisko lodowe (np. ze stycznia) – liczy się tylko świeże
 
 SPIKE_DAY_CM = 150          # skok dobowy uznawany za podejrzany
 SPIKE_DAY_NEIGHBOR_CM = 50  # zmiana na sąsiedniej stacji, która potwierdza prawdziwe wezbranie

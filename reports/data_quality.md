@@ -1,6 +1,6 @@
 # Raport jakości danych
 
-Wygenerowano: 2026-10-18 21:43 UTC · `python -m src.data.build`
+Wygenerowano: 2026-10-18 21:59 UTC · `python -m src.data.build`
 Definicja doby: `06utc` (otwarta decyzja nr 1, `config.DAILY_DEFINITION`)
 
 ## Tabele
@@ -105,10 +105,10 @@ _brak_
 
 ## Pogoda
 
-- ERA5 do: 2026-10-09 23:00:00+00:00, brakujące godziny w ERA5: 0, wartości podejrzane: 0
+- ERA5 do: 2026-10-12 23:00:00+00:00, brakujące godziny w ERA5: 0, wartości podejrzane: 0
 - Prognozy: 129 wydań (2026-10-13 09:00:00+00:00 – 2026-10-18 21:00:00+00:00), pominięte godziny wydań: 4, lead_h (-47, 71)
 - Wilgotność gleby w prognozach: braki 96, uzupełnione 0
-- Godziny bez ERA5 i bez analizy z prognozy (po końcu ERA5): 48 (2026-10-10 00:00:00+00:00 – 2026-10-11 23:00:00+00:00)
+- Godziny bez ERA5 i bez analizy z prognozy (po końcu ERA5): 0
 
 ## Ostrzeżenia IMGW
 
